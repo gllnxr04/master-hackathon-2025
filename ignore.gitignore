@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# PyCharm
+.idea/
+*.iml
+.idea/*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Output-Daten (werden neu generiert)
+data/processed/
+data/temp/
+
+# Logs
+*.log
+*.tmp
