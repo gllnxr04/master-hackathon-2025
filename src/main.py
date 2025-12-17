@@ -3,9 +3,8 @@ import subprocess
 import os
 
 """
-Hauptskript: Filtert Unfalldaten für Leipzig und erstellt Visualisierungen.
+Hauptskript: Filtert Unfalldaten für Leipzig und erstellt Visualisierungen!
 """
-
 
 def install_required_packages():
     """

@@ -102,6 +102,18 @@ def visualize_in_qgis(geojson_files):
         temp_script_path = f.name
 
     # QGIS starten
+    '''
+    🚨| Bei Nutzung von Betriebssystem "Windows" hier abändern zu:
+    "    try:
+        subprocess.run([
+            QGIS_PATH,
+            "--code", temp_script_path
+        ], check = TRUE)
+        print(f"✓ QGIS geöffnet mit {len(geojson_files)} Layern")
+    except Exception as e:
+        print(f"✗ Fehler beim Öffnen von QGIS: {e}")
+    "
+    '''
     try:
         subprocess.run([
             f"{QGIS_PATH}/Contents/MacOS/QGIS",
