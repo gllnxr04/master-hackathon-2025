@@ -2,6 +2,50 @@ import geopandas as gpd
 import pandas as pd
 from pathlib import Path
 
+stadtteile = {
+    "Nord": [
+        "Gohlis-Mitte", "Gohlis-Nord", "Gohlis-Süd",
+        "Eutritzsch", "Wiederitzsch", "Seehausen"
+    ],
+    "Nordost": [
+        "Schönefeld-Ost", "Schönefeld-Abtnaundorf",
+        "Mockau-Nord", "Mockau-Süd", "Thekla", "Plaußig-Portitz"
+    ],
+    "Ost": [
+        "Neustadt-Neuschönefeld", "Volkmarsdorf",
+        "Anger-Crottendorf", "Sellerhausen-Stünz",
+        "Paunsdorf", "Heiterblick", "Mölkau", "Engelsdorf", "Baalsdorf", "Althen-KLeinpösna"
+    ],
+    "Südost": [
+        "Reudnitz-Thonberg", "Stötteritz",
+        "Probstheida", "Meusdorf", "Liebertwolkwitz",
+        "Holzhausen"
+    ],
+    "Süd": [
+        "Connewitz", "Marienbrunn", "Lößnig",
+        "Dölitz-Dösen", "Südvorstadt"
+    ],
+    "Südwest": [
+        "Kleinzschocher", "Knautkleeberg-Knauthain",
+        "Hartmannsdorf-Knautnaundorf", "Großzschocher", "Schleußig", "Plagwitz"
+    ],
+    "West": [
+        "Grünau-Ost", "Grünau-Mitte", "Grünau-Nord", "Grünau-Siedlung", "Lausen-Grünau", "Miltitz", "Schönau"
+    ],
+    "Nordwest": [
+        "Lindenthal", "Möckern", "Wahren", "Lützschena-Stahmeln"
+    ],
+
+    "Alt-West": [
+        "Böhlitz-Ehrenberg", "Leutzsch", "Altlindenau", "Lindenau", "Neulindenau", "Burghausen-Rückmarsdorf"
+    ],
+
+    "Mitte": [
+        "Zentrum", "Zentrum-Ost", "Zentrum-Süd",
+        "Zentrum-Südost", "Zentrum-Nord", "Zentrum-West", "Zentrum-Nordwest"
+    ]
+}
+
 # Jetzt können wir auf unseren erzeugten geojson-Dateien aufbauen
 # Frage 1: Wie sieht die prozentuale Verteilung der Unfälle in den jeweiligen Stadtbezirken gestaffelt nach Jahreszeiten aus?
 # Frage 2: Wie sieht die prozentuale Verteilung der Unfälle in den jeweiligen Stadtbezirken gestaffelt nach Jahreszeiten und Verkehrsmitteln aus?
@@ -10,29 +54,36 @@ from pathlib import Path
 # geojson-Dateien laden und zusammenfassen
 # -------------------------------------------
 
-# Wo liegen die Dateien? → einen Ordner über "src"
+# Wo liegen die Dateien? -> einen Ordner über "src"
 data_dir = Path("../data/processed/geojson")
 geojson_files = sorted(data_dir.glob("Unfallorte*.geojson")) # * als Platzhalter, um alle Jahre von 2016-2024 zu erfassen
 
+def collect_data():
 # Leere Liste anlegen
-alle_unfaelle_geojson = []
+    alle_unfaelle_geojson = []
 
 # Sortierte geojson_files einlesen
-for file in geojson_files:
-    gdf = gpd.read_file(file)
-    # Sicherstellen, dass alle benötigten Spalten existieren ("IstSonstig" gibt es nicht in allen Dateien)
-    for spalte in ["IstPKW", "IstRad", "IstFuss", "IstKrad", "IstSonstig"]:
-        if spalte not in gdf.columns: # bedeutet z. B. für "IstSonstig" wird 0 eingesetzt, wenn nicht vorhanden in der Datei
-            gdf[spalte] = 0
+    for file in geojson_files:
+        gdf = gpd.read_file(file)
+        if "IstSonstig" in gdf.columns:
+            gdf.rename(columns={"IstSonstig": "IstSonstige"}, inplace=True)
+        # Sicherstellen, dass alle benötigten Spalten existieren
+        for spalte in ["IstPKW", "IstRad", "IstFuss", "IstKrad", "IstSonstige"]:
+            if spalte not in gdf.columns: # wenn eine der Spalten in einer der Dateien nicht vorhanden ist, wird 0 eingesetzt
+                gdf[spalte] = 0
 
-# Benötigte Spalten auswählen
-    gdf = gdf[[ "Name", "UMONAT", "UJAHR", "IstPKW", "IstRad", "IstFuss", "IstKrad", "IstSonstig"]]
+    # Benötigte Spalten auswählen
+        gdf = gdf[[ "Name", "UMONAT", "UJAHR", "IstPKW", "IstRad", "IstFuss", "IstKrad", "IstSonstige"]]
 
-# Liste befüllen
-    alle_unfaelle_geojson.append(gdf)
+    # Liste befüllen
+        alle_unfaelle_geojson.append(gdf)
 
-# Alle Jahre zusammenführen
-unfaelle = pd.concat(alle_unfaelle_geojson, ignore_index=True)
+    # Alle Jahre zusammenführen
+    unfaelle = pd.concat(alle_unfaelle_geojson, ignore_index=True)
+
+    unfaelle["Jahreszeit"] = unfaelle["UMONAT"].astype(int).apply(monat_zu_jahreszeit)
+
+    return unfaelle
 
 # ----------------------------------
 # Monate den Jahreszeiten zuordnen
@@ -53,13 +104,16 @@ def monat_zu_jahreszeit(monat:int) -> str:
         return "Winter"
 
 # Neue Spalte für Jahreszeiten erzeugen
-unfaelle["Jahreszeit"] = unfaelle["UMONAT"].astype(int).apply(monat_zu_jahreszeit)
+# .astype erzeugt temporäre Kopie der Spalte "UMONAT"
+# .apply wendet Funktion auf Kopie der Spalte an
+
+
 
 # ------------------------------------------
 # Jetzt können wir nach Stadtbezirk auswerten
 # ------------------------------------------
 
-def unfaelle_nach_jahreszeit(stadtbezirk: str):
+def unfaelle_nach_jahreszeit(unfaelle, stadtbezirk: str):
     """Zählt Unfälle pro Jahreszeit für einen Stadtbezirk und berechnet die
     prozentuale Unfallverteilung auf Basis der zurückliegenden Jahre."""
 
@@ -93,25 +147,59 @@ def unfaelle_nach_jahreszeit(stadtbezirk: str):
     prozentuale_unfallverteilung = jahreszeit_counts / gesamt * 100
     return prozentuale_unfallverteilung
 
-# Eingabe Stadtbezirk
-stadtbezirk_input = str(input("Gib hier den Stadtbezirk ein, für den du die prozentuale Verteilung der Unfälle nach Jahreszeit wissen möchtest.\n"
-                          "Diese beruht auf der Basis der Unfalldaten der Jahre 2016-2024.\n"
-                          "Du hast die Wahl zwischen Nord, Nordwest, Nordost, Ost, Südost, Süd, Südwest, West, Alt-West und Mitte: "))
+#Tabelle zur Zuordnung der Himmelsrichtungen zu den entsprechenden Leipziger Stadtteilen
 
-# Ausgabe der prozentualen Verteilung der Unfälle nach Jahreszeit in einem bestimmten Stadtbezirk
-prozentuale_unfallverteilung = unfaelle_nach_jahreszeit(stadtbezirk_input)
+"""
+Nachfolgend findest du die Leipziger Stadtteile sortiert nach Himmelsrichtungen. Die Liste wird zu Beginn ausgegeben, damit man
+checken kann, wo man den gesuchten Stadtteil einordnen muss.
+"""
 
-if prozentuale_unfallverteilung is not None:
-    print(f"\nDie prozentuale Verteilung der Unfälle im Stadtbezirk '{stadtbezirk_input}': ")
-    for saison, prozent in prozentuale_unfallverteilung.items():
-        print(f"{saison}: {prozent: .2f}%")
-    print()
 
+
+def user_input_choice():
+    # Tabelle ausgeben
+    print("=" * 63)
+    print("Nachfolgend findest du die Leipziger Stadtteile sortiert nach Himmelsrichtungen.\nDas Tool funktioniert über die Eingabe der Himmelsrichtung.\n"
+        "Schau hier einmal nach zu welcher dein gesuchter Stadtteil gehört.")
+    print("=" * 63)
+
+    for richtung, orte in stadtteile.items():
+        print(f"\n{richtung}")
+        print("-" * 63)
+        for ort in sorted(orte):
+            print(f"  • {ort}")
+
+    print("\n" + "=" * 63)
+    print(f"Gesamt: {sum(len(v) for v in stadtteile.values())} Stadtteile")
+    print("=" * 63)
+
+    # Eingabe Stadtbezirk
+    stadtbezirk_input = str(input("Gib hier den Stadtbezirk ein, für den du die prozentuale Verteilung der Unfälle nach Jahreszeit wissen möchtest.\n"
+                              "Diese beruht auf der Basis der Unfalldaten der Jahre 2016-2024.\n"
+                              "Du hast die Wahl zwischen Nord, Nordwest, Nordost, Ost, Südost, Süd, Südwest, West, Alt-West und Mitte: "))
+
+    # Ausgabe der prozentualen Verteilung der Unfälle nach Jahreszeit in einem bestimmten Stadtbezirk
+    prozentuale_unfallverteilung = unfaelle_nach_jahreszeit(collect_data(), stadtbezirk_input)
+
+    if prozentuale_unfallverteilung is not None:
+        print(f"\nDie prozentuale Verteilung der Unfälle im Stadtbezirk '{stadtbezirk_input}' (absteigend sortiert): ")
+
+        # Nach Größe absteigend sortieren
+        sortiert = sorted(prozentuale_unfallverteilung.items(), key=lambda item: item[1], reverse=True)
+
+        # Maximalwert ermitteln
+        max_wert = sortiert[0][1] if sortiert else 0
+
+        for saison, prozent in sortiert:
+            # Totenkopf nur beim höchsten Wert
+            emoji = " 🚨" if prozent == max_wert else ""
+            print(f"{saison}: {prozent:.2f} %{emoji}")
+        print()
 # ----------------------------------
 # Unfallverteilung nach Jahreszeit und Fortbewegungsmittel
 # ----------------------------------
 
-def unfaelle_nach_jahreszeit_und_verkehrsmittel(stadtbezirk: str):
+def unfaelle_nach_jahreszeit_und_verkehrsmittel(unfaelle, stadtbezirk: str):
     """Berechnet die prozentuale Verteilung der Unfälle nach Fortbewegungsmittel
     und Jahreszeit für einen bestimmten Stadtbezirk"""
 
@@ -130,7 +218,7 @@ def unfaelle_nach_jahreszeit_und_verkehrsmittel(stadtbezirk: str):
     "Rad": "IstRad",
     "Fußgänger": "IstFuss",
     "Kraftrad": "IstKrad",
-    "Sonstige": "IstSonstig",
+    "Sonstige": "IstSonstige",
     }
 
     # Leeres Dictionary anlegen, in dem später die Ergebnisse pro Jahreszeit gespeichert werden
@@ -171,19 +259,28 @@ def unfaelle_nach_jahreszeit_und_verkehrsmittel(stadtbezirk: str):
 # Input 2 und Funktion aufrufen
 # --------------------------
 
-stadtbezirk_input2 = str(input("Gib den Stadtbezirk ein, für den du die prozentuale Verteilung "
-                               "der Unfälle nach Fortbewegungsmittel und Jahreszeit erfahren möchtest.\n"
-                               "Du hast die Wahl zwischen Nord, Nordwest, Nordost, Ost, Südost, Süd, Südwest, West, Alt-West und Mitte: "))
+def user_input_choice_2():
+    stadtbezirk_input2 = str(input("Gib den Stadtbezirk ein, für den du die prozentuale Verteilung "
+                                   "der Unfälle nach Fortbewegungsmittel und Jahreszeit erfahren möchtest.\n"
+                                   "Du hast die Wahl zwischen Nord, Nordwest, Nordost, Ost, Südost, Süd, Südwest, West, Alt-West und Mitte: "))
 
-verteilung = unfaelle_nach_jahreszeit_und_verkehrsmittel(stadtbezirk_input2)
+    verteilung = unfaelle_nach_jahreszeit_und_verkehrsmittel(collect_data(),stadtbezirk_input2)
 
-# prüfen, ob überhaupt Daten für den Stadtbezirk gefunden wurden
-# wenn ja, wird Unfallverteilung nach Jahreszeit und Fortbewegungsmittel ausgegeben
-if verteilung:
-    print(f"Unfallverteilung nach Fortbewegungsmittel in '{stadtbezirk_input2}':\n")
+    # prüfen, ob überhaupt Daten für den Stadtbezirk gefunden wurden
+    # wenn ja, wird Unfallverteilung nach Jahreszeit und Fortbewegungsmittel ausgegeben
+    if verteilung:
+        print(f"Unfallverteilung nach Verkehrsmittel in '{stadtbezirk_input2}' (absteigend sortiert):\n")
 
-    for jahreszeit, werte in verteilung.items():
-        print(f"{jahreszeit}:")
-        for verkehrsmittel, prozent in werte.items():
-            print(f" {verkehrsmittel}: {prozent:.2f} %") # .2f formatiert auf zwei Deimalstellen
-        print()
+        for jahreszeit, werte in verteilung.items():
+            print(f"\nSo sieht die Unfallverteilung in {stadtbezirk_input2} im {jahreszeit} aus:")
+
+            # Verkehrsmittel nach Prozentwert absteigend sortieren
+            sortiert_verkehrsmittel = sorted(werte.items(), key=lambda item: item[1], reverse=True)
+
+            # Maximalwert für diese Jahreszeit ermitteln
+            max_wert = sortiert_verkehrsmittel[0][1] if sortiert_verkehrsmittel else 0
+
+            for verkehrsmittel, prozent in sortiert_verkehrsmittel:
+                # Totenkopf nur beim höchsten Wert
+                emoji = " 🚨" if prozent == max_wert else ""
+                print(f"  {verkehrsmittel}: {prozent:.2f} %{emoji}")
